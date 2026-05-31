@@ -1,0 +1,37 @@
+{
+    "name": "lzpeng/gaara-hyperf-2fa",
+    "description": "gaara-hyperf two-factor authentication (TOTP) extension.",
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "GaaraHyperf\\TwoFactor\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "liuzhanpeng",
+            "email": "liuzhanpeng@gmail.com"
+        }
+    ],
+    "require": {
+        "php": ">=8.1",
+        "lzpeng/gaara-hyperf": "dev-master",
+        "spomky-labs/otphp": "^11.0"
+    },
+    "require-dev": {
+        "pestphp/pest": "^2.36",
+        "mockery/mockery": "^1.6",
+        "friendsofphp/php-cs-fixer": "^3.94"
+    },
+    "extra": {
+        "hyperf": {
+            "config": "GaaraHyperf\\TwoFactor\\ConfigProvider"
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    }
+}
