@@ -1,5 +1,7 @@
 # gaara-hyperf-2fa
 
+[English](README.en.md)
+
 [gaara-hyperf](https://github.com/liuzhanpeng/gaara-hyperf) 的双因素认证（2FA）扩展，支持 TOTP、Email OTP、SMS OTP，并可通过实现接口自由扩展更多方式。
 
 ## 特性
@@ -281,3 +283,4 @@ class PushNotificationMethod implements TwoFactorMethodInterface
 ## 许可
 
 MIT
+
