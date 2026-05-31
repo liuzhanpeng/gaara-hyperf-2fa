@@ -1,6 +1,6 @@
 {
     "name": "lzpeng/gaara-hyperf-2fa",
-    "description": "gaara-hyperf two-factor authentication (TOTP) extension.",
+    "description": "gaara-hyperf two-factor authentication extension: TOTP, Email OTP, SMS OTP and custom methods.",
     "type": "library",
     "license": "MIT",
     "autoload": {
