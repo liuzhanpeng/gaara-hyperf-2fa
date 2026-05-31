@@ -31,7 +31,9 @@ class RedisChallengeStorage implements ChallengeStorageInterface
             json_encode([
                 'user_identifier' => $challenge->userIdentifier,
                 'guard_name'      => $challenge->guardName,
+                'method'          => $challenge->method,
                 'issued_at'       => $challenge->issuedAt,
+                'metadata'        => $challenge->metadata,
             ])
         );
     }
@@ -45,7 +47,7 @@ class RedisChallengeStorage implements ChallengeStorageInterface
 
         $data = json_decode($raw, true);
         if (! is_array($data)
-            || ! isset($data['user_identifier'], $data['guard_name'], $data['issued_at'])
+            || ! isset($data['user_identifier'], $data['guard_name'], $data['method'], $data['issued_at'])
         ) {
             return null;
         }
@@ -53,7 +55,9 @@ class RedisChallengeStorage implements ChallengeStorageInterface
         return new TwoFactorChallenge(
             $data['user_identifier'],
             $data['guard_name'],
+            $data['method'],
             (int) $data['issued_at'],
+            $data['metadata'] ?? [],
         );
     }
 

@@ -10,17 +10,17 @@ use GaaraHyperf\Authenticator\AuthenticationSuccessHandlerInterface;
 use GaaraHyperf\Exception\AuthenticationException;
 use GaaraHyperf\Passport\Passport;
 use GaaraHyperf\TwoFactor\ChallengeStorage\ChallengeStorageInterface;
-use GaaraHyperf\TwoFactor\Totp\TotpVerifierInterface;
+use GaaraHyperf\TwoFactor\Method\TwoFactorMethodRegistry;
 use GaaraHyperf\UserProvider\UserProviderInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
 /**
  * 双因素认证器.
  *
- * 处理 TOTP 验证端点（verify_path）的请求：
+ * 处理 TOTP/Email OTP 等验证端点（verify_path）的请求：
  *   1. 根据请求中的 challenge_id 检索挑战数据
  *   2. 校验挑战 TTL
- *   3. 使用 TOTP 验证器验证用户提交的验证码
+ *   3. 通过 TwoFactorMethodRegistry 找到对应方式并验证码
  *   4. 验证通过后返回 Passport，由 Guard 创建最终的 AuthenticatedToken
  */
 class TwoFactorAuthenticator extends AbstractAuthenticator
@@ -28,7 +28,7 @@ class TwoFactorAuthenticator extends AbstractAuthenticator
     public function __construct(
         private string $verifyPath,
         private ChallengeStorageInterface $challengeStorage,
-        private TotpVerifierInterface $totpVerifier,
+        private TwoFactorMethodRegistry $methodRegistry,
         private UserProviderInterface $userProvider,
         private int $challengeTtl,
         private string $codeField,
@@ -90,8 +90,9 @@ class TwoFactorAuthenticator extends AbstractAuthenticator
             );
         }
 
-        // 验证 TOTP 码
-        if (! $this->totpVerifier->verify($user->getTwoFactorSecret(), $code)) {
+        // 解析对应的 2FA 方式并验证码
+        $method = $this->methodRegistry->resolve($challenge->method);
+        if (! $method->verify($user, $code, $challenge)) {
             throw new AuthenticationException(
                 message: 'Invalid two-factor code',
                 userIdentifier: $challenge->userIdentifier,

@@ -8,6 +8,8 @@ use GaaraHyperf\Passport\Passport;
 use GaaraHyperf\Token\AuthenticatedToken;
 use GaaraHyperf\TwoFactor\ChallengeStorage\ChallengeStorageInterface;
 use GaaraHyperf\TwoFactor\EventListener\TwoFactorEnforcementListener;
+use GaaraHyperf\TwoFactor\Method\TwoFactorMethodInterface;
+use GaaraHyperf\TwoFactor\Method\TwoFactorMethodRegistry;
 use GaaraHyperf\TwoFactor\TwoFactorAuthenticator;
 use GaaraHyperf\TwoFactor\TwoFactorPendingToken;
 use Psr\Http\Message\ServerRequestInterface;
@@ -24,11 +26,24 @@ function makeSuccessEvent(
     return new AuthenticationSuccessEvent($guardName, $authenticator, $token, $passport, $request, null, null);
 }
 
+function makeTotpRegistry(): array
+{
+    $method = Mockery::mock(TwoFactorMethodInterface::class);
+    $method->shouldReceive('type')->andReturn('totp');
+    $method->shouldReceive('initChallenge')->andReturn(['metadata' => [], 'response' => []]);
+
+    $registry = new TwoFactorMethodRegistry();
+    $registry->register($method);
+
+    return [$registry, $method];
+}
+
 it('replaces the token with TwoFactorPendingToken when user has 2FA enabled', function (): void {
     $storage = Mockery::mock(ChallengeStorageInterface::class);
     $storage->shouldReceive('store')->once();
 
-    $listener = new TwoFactorEnforcementListener($storage);
+    [$registry] = makeTotpRegistry();
+    $listener = new TwoFactorEnforcementListener($storage, $registry);
     $authenticator = Mockery::mock(AuthenticatorInterface::class);
 
     $user = makeTwoFactorUser('user-1', true);
@@ -44,7 +59,8 @@ it('sets a JSON response containing challenge_id when 2FA is enforced', function
     $storage = Mockery::mock(ChallengeStorageInterface::class);
     $storage->shouldReceive('store')->once();
 
-    $listener = new TwoFactorEnforcementListener($storage);
+    [$registry] = makeTotpRegistry();
+    $listener = new TwoFactorEnforcementListener($storage, $registry);
     $authenticator = Mockery::mock(AuthenticatorInterface::class);
 
     $user = makeTwoFactorUser('user-1', true);
@@ -64,7 +80,8 @@ it('does not enforce 2FA when user has 2FA disabled', function (): void {
     $storage = Mockery::mock(ChallengeStorageInterface::class);
     $storage->shouldNotReceive('store');
 
-    $listener = new TwoFactorEnforcementListener($storage);
+    [$registry] = makeTotpRegistry();
+    $listener = new TwoFactorEnforcementListener($storage, $registry);
     $authenticator = Mockery::mock(AuthenticatorInterface::class);
 
     $user = makeTwoFactorUser('user-1', false);
@@ -81,7 +98,8 @@ it('does not enforce 2FA when user does not implement TwoFactorAwareUserInterfac
     $storage = Mockery::mock(ChallengeStorageInterface::class);
     $storage->shouldNotReceive('store');
 
-    $listener = new TwoFactorEnforcementListener($storage);
+    [$registry] = makeTotpRegistry();
+    $listener = new TwoFactorEnforcementListener($storage, $registry);
     $authenticator = Mockery::mock(AuthenticatorInterface::class);
 
     $user = makeRegularUser('user-1');
@@ -97,7 +115,8 @@ it('skips enforcement when authenticator is TwoFactorAuthenticator (avoids infin
     $storage = Mockery::mock(ChallengeStorageInterface::class);
     $storage->shouldNotReceive('store');
 
-    $listener = new TwoFactorEnforcementListener($storage);
+    [$registry] = makeTotpRegistry();
+    $listener = new TwoFactorEnforcementListener($storage, $registry);
 
     $twoFactorAuthenticator = Mockery::mock(TwoFactorAuthenticator::class);
 

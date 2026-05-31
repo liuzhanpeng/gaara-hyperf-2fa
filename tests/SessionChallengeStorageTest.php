@@ -10,12 +10,14 @@ it('stores, retrieves, and deletes a challenge via session', function (): void {
     $session = Mockery::mock(SessionInterface::class);
     $storage = new SessionChallengeStorage($session);
 
-    $challenge = new TwoFactorChallenge('user-1', 'api', time());
+    $challenge = new TwoFactorChallenge('user-1', 'api', 'totp', time());
     $key = '_gaara_2fa_challenge_abc123';
     $encoded = json_encode([
         'user_identifier' => 'user-1',
         'guard_name' => 'api',
+        'method' => 'totp',
         'issued_at' => $challenge->issuedAt,
+        'metadata' => [],
     ]);
 
     $session->shouldReceive('set')->once()->with($key, Mockery::type('string'));
@@ -26,7 +28,9 @@ it('stores, retrieves, and deletes a challenge via session', function (): void {
 
     $retrieved = $storage->get('abc123');
     expect($retrieved)->toBeInstanceOf(TwoFactorChallenge::class)
-        ->and($retrieved->userIdentifier)->toBe('user-1');
+        ->and($retrieved->userIdentifier)->toBe('user-1')
+        ->and($retrieved->method)->toBe('totp')
+        ->and($retrieved->metadata)->toBe([]);
 
     $storage->delete('abc123');
 });

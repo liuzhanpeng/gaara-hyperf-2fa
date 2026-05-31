@@ -5,13 +5,31 @@ declare(strict_types=1);
 use GaaraHyperf\Exception\AuthenticationException;
 use GaaraHyperf\TwoFactor\ChallengeStorage\ChallengeStorageInterface;
 use GaaraHyperf\TwoFactor\ChallengeStorage\TwoFactorChallenge;
-use GaaraHyperf\TwoFactor\Totp\TotpVerifierInterface;
+use GaaraHyperf\TwoFactor\Method\TwoFactorMethodInterface;
+use GaaraHyperf\TwoFactor\Method\TwoFactorMethodRegistry;
 use GaaraHyperf\TwoFactor\TwoFactorAuthenticator;
 use GaaraHyperf\UserProvider\UserProviderInterface;
 
+function makeRegistry(?TwoFactorMethodInterface $method = null, string $type = 'totp'): TwoFactorMethodRegistry
+{
+    $registry = new TwoFactorMethodRegistry();
+    if ($method !== null) {
+        $registry->register($method);
+    }
+    return $registry;
+}
+
+function makeMethodMock(string $type, bool $verifyResult): TwoFactorMethodInterface
+{
+    $method = Mockery::mock(TwoFactorMethodInterface::class);
+    $method->shouldReceive('type')->andReturn($type);
+    $method->shouldReceive('verify')->andReturn($verifyResult);
+    return $method;
+}
+
 function makeAuthenticator(
     ?ChallengeStorageInterface $storage = null,
-    ?TotpVerifierInterface $verifier = null,
+    ?TwoFactorMethodRegistry $registry = null,
     ?UserProviderInterface $userProvider = null,
     string $verifyPath = '/two-factor/verify',
     int $ttl = 300,
@@ -19,7 +37,7 @@ function makeAuthenticator(
     return new TwoFactorAuthenticator(
         verifyPath: $verifyPath,
         challengeStorage: $storage ?? Mockery::mock(ChallengeStorageInterface::class),
-        totpVerifier: $verifier ?? Mockery::mock(TotpVerifierInterface::class),
+        methodRegistry: $registry ?? new TwoFactorMethodRegistry(),
         userProvider: $userProvider ?? Mockery::mock(UserProviderInterface::class),
         challengeTtl: $ttl,
         codeField: 'code',
@@ -82,7 +100,7 @@ it('throws when challenge does not exist in storage', function (): void {
 
 it('throws and deletes challenge when it is expired', function (): void {
     $storage = Mockery::mock(ChallengeStorageInterface::class);
-    $challenge = new TwoFactorChallenge('user-1', 'api', time() - 400);
+    $challenge = new TwoFactorChallenge('user-1', 'api', 'totp', time() - 400);
     $storage->shouldReceive('get')->with('abc')->andReturn($challenge);
     $storage->shouldReceive('delete')->with('abc')->once();
 
@@ -96,20 +114,20 @@ it('throws and deletes challenge when it is expired', function (): void {
         ->toThrow(AuthenticationException::class, 'expired');
 });
 
-it('throws when TOTP code is invalid', function (): void {
+it('throws when 2FA code is invalid', function (): void {
     $user = makeTwoFactorUser('user-1', true, 'SECRET');
 
     $storage = Mockery::mock(ChallengeStorageInterface::class);
-    $challenge = new TwoFactorChallenge('user-1', 'api', time());
+    $challenge = new TwoFactorChallenge('user-1', 'api', 'totp', time());
     $storage->shouldReceive('get')->with('abc')->andReturn($challenge);
 
     $userProvider = Mockery::mock(UserProviderInterface::class);
     $userProvider->shouldReceive('findByIdentifier')->with('user-1')->andReturn($user);
 
-    $verifier = Mockery::mock(TotpVerifierInterface::class);
-    $verifier->shouldReceive('verify')->with('SECRET', 'wrong')->andReturn(false);
+    $method = makeMethodMock('totp', false);
+    $registry = makeRegistry($method);
 
-    $authenticator = makeAuthenticator(storage: $storage, verifier: $verifier, userProvider: $userProvider);
+    $authenticator = makeAuthenticator(storage: $storage, registry: $registry, userProvider: $userProvider);
     $request = makeRequest('POST', '/two-factor/verify', [
         'challenge_id' => 'abc',
         'code' => 'wrong',
@@ -119,21 +137,21 @@ it('throws when TOTP code is invalid', function (): void {
         ->toThrow(AuthenticationException::class, 'Invalid two-factor code');
 });
 
-it('returns a valid passport when TOTP code is correct', function (): void {
+it('returns a valid passport when 2FA code is correct', function (): void {
     $user = makeTwoFactorUser('user-1', true, 'SECRET');
 
     $storage = Mockery::mock(ChallengeStorageInterface::class);
-    $challenge = new TwoFactorChallenge('user-1', 'api', time());
+    $challenge = new TwoFactorChallenge('user-1', 'api', 'totp', time());
     $storage->shouldReceive('get')->with('abc')->andReturn($challenge);
     $storage->shouldReceive('delete')->with('abc')->once();
 
     $userProvider = Mockery::mock(UserProviderInterface::class);
     $userProvider->shouldReceive('findByIdentifier')->with('user-1')->andReturn($user);
 
-    $verifier = Mockery::mock(TotpVerifierInterface::class);
-    $verifier->shouldReceive('verify')->with('SECRET', '123456')->andReturn(true);
+    $method = makeMethodMock('totp', true);
+    $registry = makeRegistry($method);
 
-    $authenticator = makeAuthenticator(storage: $storage, verifier: $verifier, userProvider: $userProvider);
+    $authenticator = makeAuthenticator(storage: $storage, registry: $registry, userProvider: $userProvider);
     $request = makeRequest('POST', '/two-factor/verify', [
         'challenge_id' => 'abc',
         'code' => '123456',

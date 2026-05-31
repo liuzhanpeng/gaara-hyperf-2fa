@@ -7,6 +7,7 @@ namespace GaaraHyperf\TwoFactor\EventListener;
 use GaaraHyperf\Event\AuthenticationSuccessEvent;
 use GaaraHyperf\TwoFactor\ChallengeStorage\ChallengeStorageInterface;
 use GaaraHyperf\TwoFactor\ChallengeStorage\TwoFactorChallenge;
+use GaaraHyperf\TwoFactor\Method\TwoFactorMethodRegistry;
 use GaaraHyperf\TwoFactor\TwoFactorAwareUserInterface;
 use GaaraHyperf\TwoFactor\TwoFactorAuthenticator;
 use GaaraHyperf\TwoFactor\TwoFactorPendingToken;
@@ -19,14 +20,15 @@ use Symfony\Component\EventDispatcher\EventSubscriberInterface;
  *
  * 监听 AuthenticationSuccessEvent：
  *   - 若用户实现了 TwoFactorAwareUserInterface 且启用了 2FA，
- *     则将已认证令牌替换为 TwoFactorPendingToken，并返回需要二次验证的响应，
- *     阻止用户在未完成 TOTP 验证前访问受保护资源。
- *   - 若用户不需要 2FA（未实现接口或未启用），则直接放行，不影响原有认证流程。
+ *     则调用对应方式的 initChallenge()，将已认证令牌替换为 TwoFactorPendingToken，
+ *     并返回需要二次验证的响应。
+ *   - 若用户不需要 2FA（未实现接口或未启用），则直接放行。
  */
 class TwoFactorEnforcementListener implements EventSubscriberInterface
 {
     public function __construct(
         private ChallengeStorageInterface $challengeStorage,
+        private TwoFactorMethodRegistry $methodRegistry,
     ) {
     }
 
@@ -55,12 +57,17 @@ class TwoFactorEnforcementListener implements EventSubscriberInterface
             return;
         }
 
-        // 生成挑战 ID 并存储挑战数据
+        // 生成挑战 ID 并调用方式初始化挑战
         $challengeId = $this->generateChallengeId();
+        $method = $this->methodRegistry->resolveForUser($user);
+        $initResult = $method->initChallenge($user);
+
         $challenge = new TwoFactorChallenge(
             userIdentifier: $user->getIdentifier(),
             guardName: $event->getGuardName(),
+            method: $method->type(),
             issuedAt: time(),
+            metadata: $initResult['metadata'],
         );
         $this->challengeStorage->store($challengeId, $challenge);
 
@@ -72,12 +79,14 @@ class TwoFactorEnforcementListener implements EventSubscriberInterface
         ));
 
         // 覆盖响应，通知客户端需要进行 2FA 验证
+        $responseData = array_merge(
+            ['challenge_id' => $challengeId],
+            $initResult['response'],
+        );
         $body = json_encode([
             'code' => 1,
             'message' => 'two_factor_required',
-            'data' => [
-                'challenge_id' => $challengeId,
-            ],
+            'data' => $responseData,
         ], JSON_UNESCAPED_UNICODE);
 
         $response = (new Response())
